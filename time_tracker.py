@@ -6,23 +6,39 @@ from discord import Embed, SelectOption, ui
 from discord.ext import commands
 
 class TimeFormatView(ui.View):
-    def __init__(self):
-        super().__init__(timeout=30)  # Add timeout
+    def __init__(self, time_tracker, month=None, year=None):
+        super().__init__(timeout=30)
         self.format = "hours"
         self.response = None
+        self.time_tracker = time_tracker
+        self.month = month if month else datetime.now().month
+        self.year = year if year else datetime.now().year
 
     @ui.select(
-        placeholder="Select time format",
-        options=[
-            SelectOption(label="Hours", value="hours", description="Display time in hours"),
-            SelectOption(label="Minutes", value="minutes", description="Display time in minutes")
-        ]
-    )
+    placeholder="Select time format",
+    options=[
+        SelectOption(label="Hours", value="hours", description="Display time in hours"),
+        SelectOption(label="Minutes", value="minutes", description="Display time in minutes")
+    ])
     async def select_format(self, interaction, select):
         self.format = select.values[0]
-        self.response = interaction
-        await interaction.response.defer()
-        self.stop()  # Stop waiting after selection
+        self.response = True
+        
+        cal_data, total_time = self.time_tracker.get_month_calendar(
+            interaction.user.id,
+            year=self.year,
+            month=self.month,
+            time_format=self.format
+        )
+        new_embed = self.time_tracker.create_calendar_embed(
+            interaction.user.id,
+            cal_data,
+            total_time,
+            time_format=self.format,
+            month=self.month,
+            year=self.year
+        )
+        await interaction.response.edit_message(embed=new_embed, view=self)
 
 class TimeTracker:
     def __init__(self):
@@ -88,7 +104,7 @@ class TimeTracker:
                         minutes = int(hours * 60)
                         week_data.append(f"{day:2d}:{minutes:3d}")
                     else:
-                        week_data.append(f"{day:2d}:{hours:3.1f}")
+                        week_data.append(f"{day:2d}: {int(hours):2d}")
             formatted_cal.append(week_data)
 
         if time_format == "minutes":
@@ -114,20 +130,39 @@ class TimeTracker:
         
         return total_hours
     
-    def create_calendar_embed(self, user_id, cal_data, total_time, time_format="hours"):
-        month_name = calendar.month_name[datetime.now().month]
-        year = datetime.now().year
+    def create_calendar_embed(self, user_id, cal_data, total_time, time_format="hours", month=None, year=None):
+        # Use provided month and year or current date
+        if month is None or year is None:
+            current_date = datetime.now()
+            month = month if month else current_date.month
+            year = year if year else current_date.year
+        
+        month_name = calendar.month_name[month]
         
         embed = Embed(title=f"Time Tracking Calendar - {month_name} {year}", color=0x00ff00)
         
-        # Create calendar grid with formatted spacing
-        calendar_str = "```\nMo  Tu  We  Th  Fr  Sa  Su\n"
+        # Create more compact calendar grid
+        calendar_str = "```ansi\n"
+        # Header
+        calendar_str += "  Mo  |  Tu  |  We  |  Th  |  Fr  |  Sa  |  Su  \n"
+        calendar_str += "────────────────────────────────────────────────\n"
+        
+        # Calendar data
         for week in cal_data:
-            calendar_str += " ".join(f"{day:6}" for day in week) + "\n"
+            line = ""
+            for day in week:
+                if day == "   ":
+                    line += "       "
+                else:
+                    day_num, time_val = day.split(":")
+                    line += f"\u001b[34m{day_num:2}\u001b[0m:{time_val} "
+            calendar_str += f"{line.rstrip()}\n"
+        
         calendar_str += "```"
         
         embed.add_field(name="Calendar", value=calendar_str, inline=False)
         
+        # Add total time field
         unit = "hours" if time_format == "hours" else "minutes"
         embed.add_field(name="Total Time", value=f"{total_time} {unit}", inline=False)
         

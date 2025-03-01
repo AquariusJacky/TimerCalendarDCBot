@@ -15,6 +15,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix = '!', intents = intents)
+bot.remove_command('help')  # Add this line to remove default help command
 
 time_tracker = TimeTracker()
 
@@ -36,47 +37,41 @@ async def ping(ctx):
     await ctx.send("pong")
 
 @bot.command(name="calendar")
-async def show_calendar(ctx):
-    """Display calendar with time tracking for current month"""
-    # Delete previous calendar messages from the bot
-    async for message in ctx.channel.history(limit=100):
-        if message.author == bot.user and message.embeds:
-            await message.delete()
+async def show_calendar(ctx, month: int = None):
+    """Display calendar with time tracking for specified month (or current month if not specified)"""
+    # ...existing deletion code...
     
-    view = TimeFormatView()
-    cal_data, total_time = time_tracker.get_month_calendar(ctx.author.id)
-    embed = time_tracker.create_calendar_embed(ctx.author.id, cal_data, total_time)
+    current_date = datetime.now()
+    year = current_date.year
+    month = month if month else current_date.month
     
-    message = await ctx.send(embed=embed, view=view)
+    # Validate month input
+    if month not in range(1, 13):
+        await ctx.send("Please enter a valid month (1-12)")
+        return
     
-    # Wait for format selection
-    await view.wait()
+    # Pass month and year to TimeFormatView
+    view = TimeFormatView(time_tracker, month=month, year=year)
+    cal_data, total_time = time_tracker.get_month_calendar(ctx.author.id, year=year, month=month)
+    embed = time_tracker.create_calendar_embed(
+        ctx.author.id, 
+        cal_data, 
+        total_time,
+        month=month,
+        year=year
+    )
     
-    if view.response:  # Check if format was selected
-        cal_data, total_time = time_tracker.get_month_calendar(
-            ctx.author.id, 
-            time_format=view.format
-        )
-        new_embed = time_tracker.create_calendar_embed(
-            ctx.author.id, 
-            cal_data, 
-            total_time, 
-            time_format=view.format
-        )
-        await message.edit(embed=new_embed, view=None)
-    else:
-        # If no format was selected (timeout), remove the view
-        await message.edit(view=None)
+    await ctx.send(embed=embed, view=view)
 
 @bot.command(name="start")
 async def start_timer(ctx):
-    """Start timing for the user"""
+    """Start timer for the user"""
     time_tracker.start_timer(ctx.author.id)
     await ctx.send(f"Timer started for {ctx.author.name}")
 
 @bot.command(name="stop")
 async def stop_timer(ctx):
-    """Stop timing for the user"""
+    """Stop timer for the user"""
     duration = time_tracker.stop_timer(ctx.author.id)
     if duration:
         await ctx.send(f"Timer stopped for {ctx.author.name}. Session duration: {duration:.2f} hours")
@@ -113,27 +108,33 @@ async def show_today(ctx):
     
     await ctx.send(embed=embed)
 
-# Voice channel automation
-@bot.event
-async def on_voice_state_update(member, before, after):
-    if before.channel != after.channel:
-        # Replace 'Your Channel Name' with the specific channel name you want to track
-        target_channel_name = 'Timer Room'
-        
-        # User joined the target channel
-        if after.channel and after.channel.name == target_channel_name:
-            time_tracker.start_timer(member.id)
-            channel = member.guild.get_channel(after.channel.id)
-            if channel:
-                await channel.send(f"Timer started for {member.name}")
-        
-        # User left the target channel
-        if before.channel and before.channel.name == target_channel_name:
-            duration = time_tracker.stop_timer(member.id)
-            if duration:
-                channel = member.guild.get_channel(before.channel.id)
-                if channel:
-                    await channel.send(f"{member.name}'s session duration: {duration:.2f} hours")
+@bot.command(name="help")
+async def show_help(ctx):
+    """Show all available commands and their usage"""
+    embed = discord.Embed(
+        title="Timer Calendar Bot - Help Guide",
+        description="Track your time with these commands:",
+        color=discord.Color.blue(),
+        timestamp=datetime.now()
+    )
+
+    commands_info = {
+        "`!start`": "Start tracking your time",
+        "`!stop`": "Stop tracking your time and see session duration",
+        "`!today`": "View your total tracked time for today",
+        "`!calendar [month]`": "Display monthly calendar with daily time tracking\n"
+                    "• Optional: specify month number (1-12)\n"
+                    "• Use the dropdown menu to switch between hours/minutes view\n"
+                    "• Format: day:time (e.g., 15:3 means 3 hours on the 15th)",
+        "`!help`": "Show this help message",
+        "`!ping`": "Check if bot is responsive"
+    }
+
+    for cmd, desc in commands_info.items():
+        embed.add_field(name=cmd, value=desc, inline=False)
+
+    embed.set_footer(text=f"Requested by {ctx.author.name}")
+    await ctx.send(embed=embed)
 
 # Run the bot
 if __name__ == "__main__":
