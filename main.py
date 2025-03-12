@@ -14,7 +14,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 # Set up bot with command prefix '!'
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix = '!', intents = intents)
+bot = commands.Bot(command_prefix = '/', intents = intents)
 bot.remove_command('help')  # Add this line to remove default help command
 
 time_tracker = TimeTracker()
@@ -36,10 +36,13 @@ async def on_command_error(ctx, error):
 async def ping(ctx):
     await ctx.send("pong")
 
-@bot.command(name="calendar")
+@bot.command(name="cal")
 async def show_calendar(ctx, month: int = None):
     """Display calendar with time tracking for specified month (or current month if not specified)"""
-    # ...existing deletion code...
+    
+    async for message in ctx.channel.history(limit=100):
+        if message.author == bot.user and message.embeds:
+            await message.delete()
     
     current_date = datetime.now()
     year = current_date.year
@@ -119,15 +122,15 @@ async def show_help(ctx):
     )
 
     commands_info = {
-        "`!start`": "Start tracking your time",
-        "`!stop`": "Stop tracking your time and see session duration",
-        "`!today`": "View your total tracked time for today",
-        "`!calendar [month]`": "Display monthly calendar with daily time tracking\n"
+        "`/start`": "Start tracking your time",
+        "`/stop`": "Stop tracking your time and see session duration",
+        "`/today`": "View your total tracked time for today",
+        "`/cal [month]`": "Display monthly calendar with daily time tracking\n"
                     "• Optional: specify month number (1-12)\n"
                     "• Use the dropdown menu to switch between hours/minutes view\n"
                     "• Format: day:time (e.g., 15:3 means 3 hours on the 15th)",
-        "`!help`": "Show this help message",
-        "`!ping`": "Check if bot is responsive"
+        "`/help`": "Show this help message",
+        "`/ping`": "Check if bot is responsive"
     }
 
     for cmd, desc in commands_info.items():
